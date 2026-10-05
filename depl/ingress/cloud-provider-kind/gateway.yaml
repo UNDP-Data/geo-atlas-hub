@@ -1,0 +1,26 @@
+# cluster wide gateway api (LB and routing). it needs to be created after the docker compose has been started and the cloud-provider-kind is operational
+
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: ${GATEWAY_NAME}
+  namespace: ${GATEWAY_NAMESPACE}
+spec:
+  gatewayClassName: cloud-provider-kind
+  listeners:
+    - name: http
+      port: 80
+      protocol: HTTP
+      allowedRoutes:
+        namespaces:
+          from: All
+    - name: https-wildcard
+      port: 443
+      protocol: HTTPS
+      tls:
+        mode: Terminate
+        certificateRefs:
+          - name: ${CERT_SECRET_NAME}
+      allowedRoutes:
+        namespaces:
+          from: All
