@@ -53,4 +53,19 @@ envsubst < "${SCRIPT_DIR}/le-cluster-issuer.yaml" | kubectl apply -f -
 echo "==> [cert] Applying Certificate '${CERT_NAME}' in namespace '${CERT_NAMESPACE}'..."
 envsubst < "${SCRIPT_DIR}/cluster-wide-cert.yaml" | kubectl apply -f -
 
-echo "==> [cert] Deployment initiated. Monitoring certificate order..."
+echo "==> [cert] Waiting for certificate '${CERT_NAME}' to be provisioned in namespace '${CERT_NAMESPACE}'..."
+echo "         (The DNS-01 challenge may take a few minutes. Please wait.)"
+
+# 1. Wait a moment to ensure the certificate resource is registered in the API
+while ! kubectl get certificate "${CERT_NAME}" -n "${CERT_NAMESPACE}" > /dev/null 2>&1; do
+  sleep 2
+done
+
+# 2. Block the script until cert-manager reports the certificate is Ready
+if ! kubectl wait --for=condition=Ready "certificate/${CERT_NAME}" -n "${CERT_NAMESPACE}" --timeout=600s; then
+  echo "ERROR: Certificate provisioning timed out after 5 minutes." >&2
+  echo "Run 'kubectl describe challenge -A' to check for DNS-01 errors." >&2
+  exit 1
+fi
+
+echo "==> [cert] Certificate '${CERT_NAME}' is successfully provisioned and ready!"

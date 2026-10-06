@@ -61,7 +61,32 @@ Follow [kubectl installation guide](https://kubernetes.io/docs/tasks/tools/)
 > [!IMPORTANT]
 > The kubectl needs to be configured to use KIND cluster and this can be done manually. However,KIND automatically 
 > updates your default ~/.kube/config file when you run *kind create cluster*
->  
+
+- [x] helm is installed and available
+Follow [helm installation guide](https://helm.sh/docs/intro/install/)
+
+- [x] envsubst is installed and available
+
+```shell
+#Ubuntu / Debian: 
+
+sudo apt-get install gettext-base
+
+#Fedora / RHEL / CentOS: 
+
+sudo dnf install gettext
+
+#Alpine Linux: 
+
+apk add gettext
+
+#Arch Linux: 
+
+sudo pacman -S gettext
+```
+
+
+  
 - create test cluster to update kube cfg
 ```shell
  kind create cluster --name testcluster
