@@ -14,7 +14,7 @@ real production grade Kubernetes cluster.
 
 The reason is simple, namely to create a dev environment that is as close as 
 possible to a production environment as to minimize development friction considering that
-AtlasHub is a complex service integrating complex components like [Git](https://git-scm.com/), [Marimo](https://marimo.io/), 
+Insights Hub is a complex service integrating complex components like [Git](https://git-scm.com/), [Marimo](https://marimo.io/), 
 [NiceGUI](https://nicegui.io/) and [FastAPI](https://fastapi.tiangolo.com/) all behind an [oauth2](https://oauth.net/2/) wall.
 
 

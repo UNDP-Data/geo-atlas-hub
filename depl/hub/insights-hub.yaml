@@ -22,9 +22,19 @@ spec:
       containers:
       - name: web
         image: insights-hub:latest
-        imagePullPolicy: IfNotPresent # Crucial for using the locally loaded KinD image
+        imagePullPolicy: IfNotPresent
         ports:
         - containerPort: 80
+        # 1. Mount the volume into the container at /app/src
+        volumeMounts:
+        - name: host-src-volume
+          mountPath: /app/src
+      # 2. Define the volume pulling from the KinD node's hostPath
+      volumes:
+      - name: host-src-volume
+        hostPath:
+          path: /app/src
+          type: Directory
 ---
 apiVersion: v1
 kind: Service
@@ -48,7 +58,7 @@ spec:
   - name: cluster-gateway
     namespace: default
   hostnames:
-  - "insights.undpgeohub.org" # Adjust to your desired local test domain
+  - "insights.undpgeohub.org"
   rules:
   - matches:
     - path:

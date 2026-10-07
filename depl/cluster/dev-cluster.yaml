@@ -1,0 +1,12 @@
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+nodes:
+- role: control-plane
+- role: worker
+  extraMounts:
+  - hostPath: /home/work/py/geo-insights-hub/src
+    containerPath: /app/src
+- role: worker
+  extraMounts:
+  - hostPath: /home/work/py/geo-insights-hub/src
+    containerPath: /app/src
