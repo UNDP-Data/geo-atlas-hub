@@ -1,16 +1,20 @@
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from pydantic import SecretStr
+from pydantic import model_validator
+from typing import Any
 
 class Settings(BaseSettings):
     # Pydantic expects a STORAGE_SECRET in your .env file
     storage_secret: SecretStr
-    server_name: str
+    app_name: str
+    header_label: str
     # oauth2-proxy base URL reachable from the app's network, used for
     # server-side session checks, e.g. http://auth-proxy:4180/oauth2
     #auth_internal_url: str
     # oauth2-proxy base URL as seen by the browser, used for sign-in/sign-out
     # redirects, e.g. https://auth.undpgeohub.org/oauth2
-    #auth_public_url: str
+    public_auth_url: str
+    private_auth_url: str
     # Public origin of this app, e.g. https://careatlas.undpgeohub.org.
     # When empty it is derived from the request (forwarded headers first).
 
@@ -20,6 +24,27 @@ class Settings(BaseSettings):
     @property
     def auth_enabled(self) -> bool:
         return bool(self.auth_internal_url and self.auth_public_url)
+    @model_validator(mode="before")
+    @classmethod
+    def strip_double_quotes_from_all_strings(cls, data: Any) -> Any:
+        # Ensure the incoming data is a dictionary (it will be for Settings)
+        if isinstance(data, dict):
+            for key, value in data.items():
+                # Check if the value is a string wrapped in literal quotes
+                if isinstance(value, str) and value.startswith('"') and value.endswith('"'):
+                    data[key] = value.strip('"')
+        return data
+
+    @model_validator(mode="before")
+    @classmethod
+    def strip_quotes_from_all_strings(cls, data: Any) -> Any:
+        # Ensure the incoming data is a dictionary (it will be for Settings)
+        if isinstance(data, dict):
+            for key, value in data.items():
+                # Check if the value is a string wrapped in literal quotes
+                if isinstance(value, str) and value.startswith("'") and value.endswith("'"):
+                    data[key] = value.strip("'")
+        return data
 
 # Instantiate it once to use throughout your app
 settings = Settings()
