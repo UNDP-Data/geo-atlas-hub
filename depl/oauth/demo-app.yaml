@@ -20,35 +20,59 @@ spec:
     spec:
       containers:
       - name: web
-        image: python:3.11-alpine
-        command: ["python", "-c"]
+        image: python:3.11-slim
+        command: ["/bin/sh", "-c"]
         args:
         - |
-          import http.server, urllib.request, urllib.error
+          # Install NiceGUI at startup
+          pip install --no-cache-dir nicegui
+          
+          # Write the app securely to avoid quote escaping issues
+          cat << 'EOF' > app.py
+          from nicegui import ui
+          from fastapi import Request
+          import urllib.request
 
-          # Points to the Helm-deployed oauth2-proxy service in namespace 'auth'
+          # Core routing values from your infrastructure
           AUTH_URL = "http://github-oauth-oauth2-proxy.auth.svc.cluster.local/oauth2/auth"
           LOGIN_REDIRECT = "https://auth.undpgeohub.org/oauth2/start?rd=https://demo.undpgeohub.org/"
+          LOGOUT_REDIRECT = "https://auth.undpgeohub.org/oauth2/sign_out?rd=https://demo.undpgeohub.org/"
 
-          class AuthHandler(http.server.BaseHTTPRequestHandler):
-              def do_GET(self):
-                  cookie = self.headers.get('Cookie', '')
-                  req = urllib.request.Request(AUTH_URL, headers={'Cookie': cookie})
-                  try:
-                      with urllib.request.urlopen(req) as resp:
-                          user = resp.headers.get('X-Auth-Request-User', 'GitHub User')
-                          email = resp.headers.get('X-Auth-Request-Email', 'unknown')
-                          self.send_response(200)
-                          self.send_header('Content-type', 'text/html')
-                          self.end_headers()
-                          self.wfile.write(f"<h1>Access Granted!</h1><p>Welcome, {user} ({email})</p>".encode())
-                  except Exception:
-                      # Not authenticated or session invalid: redirect to central auth
-                      self.send_response(302)
-                      self.send_header('Location', LOGIN_REDIRECT)
-                      self.end_headers()
+          def check_auth(request: Request):
+              """Verifies the user session by passing the cookie to the internal auth service."""
+              cookie = request.headers.get('cookie', '')
+              req = urllib.request.Request(AUTH_URL, headers={'Cookie': cookie})
+              try:
+                  with urllib.request.urlopen(req) as resp:
+                      user = resp.headers.get('X-Auth-Request-User', 'GitHub User')
+                      email = resp.headers.get('X-Auth-Request-Email', 'unknown')
+                      return True, user, email
+              except Exception:
+                  return False, None, None
 
-          http.server.HTTPServer(('0.0.0.0', 80), AuthHandler).serve_forever()
+          @ui.page('/')
+          def index(request: Request):
+              is_auth, user, email = check_auth(request)
+              
+              with ui.card().classes('absolute-center items-center p-8 shadow-lg'):
+                  if is_auth:
+                      ui.label(f'Welcome, {user}!').classes('text-2xl font-bold')
+                      ui.label(email).classes('text-gray-500 mb-6')
+                      ui.button('Log Out', 
+                                on_click=lambda: ui.navigate.to(LOGOUT_REDIRECT), 
+                                color='negative').classes('px-6')
+                  else:
+                      ui.label('Please log in to access the demo.').classes('text-xl mb-6')
+                      ui.button('Log In', 
+                                on_click=lambda: ui.navigate.to(LOGIN_REDIRECT), 
+                                color='primary').classes('px-6')
+
+          # Run NiceGUI on standard HTTP port 80
+          ui.run(port=80, host='0.0.0.0', title="Demo Dashboard", show=False)
+          EOF
+          
+          # Start the application
+          python app.py
         ports:
         - containerPort: 80
 ---
@@ -72,7 +96,7 @@ metadata:
 spec:
   parentRefs:
   - name: cluster-gateway
-    namespace: default  # Explicit cross-namespace reference to default
+    namespace: default
   hostnames:
   - "demo.undpgeohub.org"
   rules:
