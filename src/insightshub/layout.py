@@ -18,6 +18,7 @@ REPO_URL = "https://github.com/UNDP-Data/geo-careatlas"
 
 NAV_ITEMS = [
     ("Apps", "/"),
+    ("Settings", "/settings"),
     ("Gender Equality", "https://www.undp.org/gender-equality"),
 
 ]
@@ -74,9 +75,6 @@ def _account_old(request: Request, user: User | None) -> None:
             ui.menu_item("Sign out", on_click=lambda: ui.navigate.to(url)).classes("bg-secondary text-white font-bold uppercase text-center ")
 
 
-
-
-
 def _account(request: Request, user: User | None) -> None:
     is_authenticated = user.is_authenticated
     target_host = settings.public_auth_url
@@ -87,26 +85,8 @@ def _account(request: Request, user: User | None) -> None:
     final_url = f"{target_host}/{action}?rd={quote(rd, safe=':/%?=&')}"
 
     with ui.row().classes("items-center gap-1"):
-        # --- BUTTON 1: THE IDENTITY BUTTON ---
-        with ui.element('div'):
-            identity_btn = ui.button(icon='account_circle') \
-                .props(f'flat round dense color="{"secondary" if is_authenticated else "grey"}"') \
-                .classes('w-9 h-9 hover:scale-110 transition') \
-                .tooltip(f'Connected as {user.email}' if is_authenticated else 'Sign In')
-
-            async def go_auth():
-                identity_btn.props('loading icon=sync')
-                identity_btn.classes(add='animate-spin')
-                await ui.run_javascript('await new Promise(r => requestAnimationFrame(r))')
-                ui.navigate.to(final_url)
-
-            identity_btn.on('click', go_auth)
-
-        # --- BUTTON 2: MANAGEMENT ICONS (Only visible when authenticated) ---
+        # --- 1. MANAGEMENT ICONS (Placed first so they appear on the left) ---
         if is_authenticated:
-            # Subtle vertical divider
-            ui.element('div').classes('w-[1px] h-6 bg-gray-300 mx-1')
-
             # Session Manager Icon
             ui.button(icon='dns').props('color="secondary"') \
                 .props('flat round dense') \
@@ -120,6 +100,26 @@ def _account(request: Request, user: User | None) -> None:
                 .classes('w-9 h-9 hover:scale-110 transition') \
                 .tooltip('System Settings') \
                 .on('click', lambda: ui.navigate.to('/settings'))
+
+            # Subtle vertical divider (Now placed between settings and the identity button)
+            ui.element('div').classes('w-[1px] h-6 bg-gray-300 mx-1')
+
+        # --- 2. THE IDENTITY BUTTON (Placed last so it appears on the right) ---
+        with ui.element('div'):
+            identity_btn = ui.button(icon='account_circle') \
+                .props(f'flat round dense color="{"blue" if is_authenticated else "secondary"}"') \
+                .classes('w-9 h-9 hover:scale-110 transition') \
+                .tooltip(f'Connected as {user.email}' if is_authenticated else 'Sign In')
+
+            async def go_auth():
+                identity_btn.props('loading icon=sync')
+                identity_btn.classes(add='animate-spin')
+                await ui.run_javascript('await new Promise(r => requestAnimationFrame(r))')
+                ui.navigate.to(final_url)
+
+            identity_btn.on('click', go_auth)
+
+
 def _account_mixed(request: Request, user: User | None) -> None:
     is_auth = user.is_authenticated
 
@@ -176,7 +176,7 @@ def load_theme() -> None:
         f'<script src="{_asset_url("nav.js")}"></script>'
     )
 
-def _header(request: Request, user: User | None ) -> None:
+def _header_old(request: Request, user: User | None ) -> None:
     current = request.url.path
 
     with ui.header().classes("undp-header"):
@@ -198,6 +198,46 @@ def _header(request: Request, user: User | None ) -> None:
                     _account(request, user)
                 _hamburger()
         #_mobile_nav(request, user, current)
+
+
+def _header(request: Request, user: User | None) -> None:
+    current = request.url.path
+
+    with ui.header().classes("undp-header"):
+        # The inner container only manages TWO children: Left side vs Right side
+        with ui.element("div").classes("undp-header__inner").style(
+                "display: flex; align-items: center; justify-content: space-between; width: 100%;"):
+
+            # ==========================================
+            # 1. LEFT WRAPPER (Brand + Menu locked together)
+            # ==========================================
+            with ui.element("div").style("display: flex; align-items: center;"):
+
+                # A. The Brand (Logo + Title)
+                with ui.link(target="/").classes("undp-header__logo"):
+                    _img(f"{ASSETS}/undp-logo-blue.svg", "UNDP logo")
+                with ui.link(target="/").classes("undp-site-title"):
+                    ui.label(settings.header_label).classes("undp-site-title__region")
+                    ui.label(settings.app_name).classes("undp-site-title__name")
+
+                # B. The Menu
+                # Use margin-left to push the menu further to the right away from the Brand.
+                # Because it's locked in this wrapper, it will NEVER move when you log in/out.
+                with ui.element("nav").classes("undp-menu gt-sm").style(
+                        "margin-left: 8rem !important; display: flex; gap: 2rem;"):
+                    for label, url in NAV_ITEMS:
+                        link = _link(label, url).classes("undp-menu__link")
+                        if _is_active(url, current):
+                            link.classes("undp-menu__link--active").props('aria-current="page"')
+
+            # ==========================================
+            # 2. RIGHT WRAPPER (Actions)
+            # ==========================================
+            # This can grow or shrink as much as it wants; it won't affect the Left Wrapper.
+            with ui.element("div").classes("undp-header__actions").style("display: flex; align-items: center;"):
+                with ui.element("div").classes("gt-sm"):
+                    _account(request, user)
+                _hamburger()
 
 def _footer() -> None:
     with ui.footer(fixed=False).classes("undp-footer"):
@@ -229,11 +269,8 @@ async def standard_page(title: str=None, request:Request = None):
     """A reusable layout with a header, main content area, and footer."""
     # Instantaneously grab the user from the proxy headers
     user = await authenticate(url=settings.private_auth_url,request=request,forward_headers=True)
-    logger.info(f'HAHA {user}')
     load_theme()
     _header(request=request, user=user)
     with ui.column().classes("undp-container undp-main"):
-        if title:
-            page_title(title)
         yield user
     _footer()
