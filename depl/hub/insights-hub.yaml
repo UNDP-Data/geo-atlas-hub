@@ -60,6 +60,7 @@ spec:
   parentRefs:
   - name: cluster-gateway
     namespace: default
+    sectionName: https-wildcard
   hostnames:
   - "insights.undpgeohub.org"
   rules:

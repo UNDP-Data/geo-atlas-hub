@@ -88,16 +88,18 @@ def _account(request: Request, user: User | None) -> None:
         # --- 1. MANAGEMENT ICONS (Placed first so they appear on the left) ---
         if is_authenticated:
             # Session Manager Icon
-            ui.button(icon='dns').props('color="secondary"') \
+            ui.button(icon='dns').props('color="secondary" size="lg"') \
                 .props('flat round dense') \
-                .classes('w-9 h-9 hover:scale-110 transition') \
+                .classes('rounded-full hover:scale-110 transition') \
+                .style('border-radius: 50% !important; overflow: hidden;') \
                 .tooltip('Session Manager') \
                 .on('click', lambda: ui.navigate.to('/sessions'))
 
             # System Settings Icon
-            ui.button(icon='tune').props('color="secondary"') \
+            ui.button(icon='tune').props('color="secondary" size="lg"') \
                 .props('flat round dense') \
-                .classes('w-9 h-9 hover:scale-110 transition') \
+                .classes(' rounded-full hover:scale-110 transition') \
+                .style('border-radius: 50% !important; overflow: hidden;') \
                 .tooltip('System Settings') \
                 .on('click', lambda: ui.navigate.to('/settings'))
 
@@ -107,8 +109,9 @@ def _account(request: Request, user: User | None) -> None:
         # --- 2. THE IDENTITY BUTTON (Placed last so it appears on the right) ---
         with ui.element('div'):
             identity_btn = ui.button(icon='account_circle') \
-                .props(f'flat round dense color="{"blue" if is_authenticated else "secondary"}"') \
-                .classes('w-9 h-9 hover:scale-110 transition') \
+                .props(f'flat round dense color="{"blue" if is_authenticated else "secondary"}" size="lg"') \
+                .classes(' rounded-full hover:scale-110 transition') \
+                .style('border-radius: 50% !important; overflow: hidden;') \
                 .tooltip(f'Connected as {user.email}' if is_authenticated else 'Sign In')
 
             async def go_auth():
