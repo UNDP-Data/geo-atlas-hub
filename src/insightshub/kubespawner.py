@@ -12,7 +12,8 @@ from insightshub.config import settings
 logger = logging.getLogger(__name__)
 
 
-def spawn_marimo_session(notebook_path: str, mode: str = "run", namespace: str = "marimo", user_email: str = None):
+def spawn_marimo_session(notebook_path: str, mode: str = "run", namespace: str = "marimo", user_email: str = None,
+                         hostname:str=None):
     repo_url = f'https://oauth2:{settings.nb_github_token}@github.com/{settings.nb_github_repo}'
 
 
@@ -21,8 +22,8 @@ def spawn_marimo_session(notebook_path: str, mode: str = "run", namespace: str =
 
     session_id = uuid.uuid4().hex[:8]
     resource_name = f"marimo-{mode}-{session_id}"
-    session_hostname = f"{session_id}.undpgeohub.org"  # The new dynamic subdomain
-
+    session_hostname = f"{session_id}.{hostname}"  # The new dynamic subdomain
+    sanitized_email = user_email.replace('@', '-').replace('.', '-')
     yaml_template = textwrap.dedent(f"""\
     ---
     apiVersion: batch/v1
@@ -36,6 +37,7 @@ def spawn_marimo_session(notebook_path: str, mode: str = "run", namespace: str =
           labels:
             app: marimo-worker
             session: placeholder-session
+            owner: {sanitized_email}
         spec:
           restartPolicy: Never
           volumes:
@@ -72,7 +74,7 @@ def spawn_marimo_session(notebook_path: str, mode: str = "run", namespace: str =
                 cpu: "2000m"     # 2 CPU cores
               limits:
                 memory: "8Gi"   # Adjust this based on your dataset sizes
-                cpu: "4000m"    # 1 full CPU core
+                cpu: "4000m"    # 4 full CPU cores
             volumeMounts:
             - name: session-workspace
               mountPath: /workspace
@@ -81,6 +83,8 @@ def spawn_marimo_session(notebook_path: str, mode: str = "run", namespace: str =
     kind: Service
     metadata:
       name: placeholder-name
+      labels:
+        owner: {sanitized_email}
     spec:
       selector:
         session: placeholder-session
@@ -92,6 +96,8 @@ def spawn_marimo_session(notebook_path: str, mode: str = "run", namespace: str =
     kind: HTTPRoute
     metadata:
       name: placeholder-name
+      labels: 
+        pwner: {sanitized_email}
     spec:
       parentRefs:
       - name: cluster-gateway
@@ -193,7 +199,8 @@ def get_pod_status(session_id: str, namespace: str = "marimo") -> str:
 
 
 
-async def handle_session_launch(notebook_path: str, mode: str, namespace:str = "marimo", user_email: str=None):
+async def handle_session_launch(notebook_path: str, mode: str, namespace:str = "marimo", user_email: str=None,
+                                hostname:str=None):
 
 
 
@@ -218,6 +225,8 @@ async def handle_session_launch(notebook_path: str, mode: str, namespace:str = "
             spawn_marimo_session,
             notebook_path=notebook_path,
             mode=mode,
+            user_email=user_email,
+            hostname=hostname
 
         )
 

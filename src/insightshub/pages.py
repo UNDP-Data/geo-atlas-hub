@@ -1,12 +1,12 @@
 """Site pages. Importing this module registers the routes with NiceGUI."""
 
-from fastapi import Request
+from fastapi import Request, Response
 from nicegui import ui
 import os
 import git
 from pathlib import Path
 from insightshub.config import settings
-from insightshub.layout import standard_page, UNDP_RED
+from insightshub.layout import standard_page
 from insightshub import marutil as mu
 from insightshub.kubespawner import handle_session_launch
 BASE_DIR = Path(__file__).parent.parent.parent.resolve()
@@ -16,9 +16,9 @@ os.environ['NOTEBOOKS_DIR'] = str(NOTEBOOKS_DIR)
 
 @ui.page("/")
 @ui.page('/notebooks/{subpath:path}')
-async def home(request: Request, subpath: str = "") -> None:
+async def home(request: Request, response:Response,  subpath: str = "") -> None:
 
-    async with (standard_page(title="Apps", request=request) as user):
+    async with (standard_page(title="Apps", request=request, response=response) as user):
         repo_url = f'https://oauth2:{settings.nb_github_token}@github.com/{settings.nb_github_repo}'
         # Identify if user has Edit rights (authenticated users)
         can_edit = user.is_authenticated
@@ -36,6 +36,8 @@ async def home(request: Request, subpath: str = "") -> None:
         if not str(current_dir).startswith(str(NOTEBOOKS_DIR)) or not current_dir.exists():
             ui.notify("Directory not found", type='negative')
             return ui.navigate.to('/')
+
+        hostname = '.'.join(request.headers.get('host').split('.')[-2:])
 
         with ui.column().classes('w-full max-w-7xl mx-auto px-6 lg:px-8'):
 
@@ -126,7 +128,8 @@ async def home(request: Request, subpath: str = "") -> None:
                                         on_click=lambda e, p=str(rel_path): handle_session_launch(
                                             notebook_path=p,
                                             mode="run",
-                                            user_email=""  # Empty for run mode; use user.email for the Edit button
+                                            user_email=user.email,
+                                            hostname=hostname
                                         )
                                     ).classes('undp-btn--small primary text-white flex-1 w-1/2 capitalize') \
                                         .tooltip(f'View as interactive app')
@@ -148,7 +151,8 @@ async def home(request: Request, subpath: str = "") -> None:
                                         on_click=lambda e, p=str(rel_path): handle_session_launch(
                                             notebook_path=p,
                                             mode="run",
-                                            user_email=""  # Empty for run mode; use user.email for the Edit button
+                                            user_email=user.email,
+                                            hostname=hostname
                                         )
                                     ).classes('undp-btn--small primary text-white flex-1 w-1/2 capitalize') \
                                         .tooltip(f'View as interactive app')
@@ -245,7 +249,11 @@ async def home(request: Request, subpath: str = "") -> None:
 
 
 @ui.page("/settings")
-async def app_settings(request: Request) -> None:
+async def app_settings(request: Request, response: Response) -> None:
 
-    async with standard_page(title="Settings", request=request) as user:
+    async with standard_page(title="Settings", request=request, response=response) as user:
         ui.label('Settings')
+        ui.label(f'{user.email}')
+        hostname = '.'.join(request.headers.get('host').split('.')[-2:])
+
+        ui.label(f'{hostname}')

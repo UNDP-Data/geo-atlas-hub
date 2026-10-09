@@ -4,6 +4,7 @@ from fastapi import Request
 from dataclasses import dataclass
 from urllib.parse import urlencode
 from insightshub.config import settings
+import random
 
 logger = logging.getLogger(__name__)
 
@@ -15,6 +16,12 @@ class User:
     email: str = ''
     groups: tuple[str, ...] = ()
 
+    def __post_init__(self):
+        if not self.email:
+            # Use object.__setattr__ to bypass frozen=True restrictions during initialization
+            random_suffix = random.randint(0, 10000)
+            object.__setattr__(self, 'email', f"{self.name.lower()}{random_suffix}@ran.dom")
+
     @property
     def display_name(self) -> str:
         """Returns the user's name if available, otherwise defaults to email."""
@@ -24,6 +31,7 @@ class User:
     def is_authenticated(self) -> bool:
         """Checks if the user is authenticated (not a default Guest)."""
         return self.name != 'Guest' and self.email != ''
+
 
 
 def page_url(request: Request) -> str:
@@ -88,6 +96,7 @@ def user_from_headers(request: Request) -> User:
     groups = tuple([g.strip() for g in groups_raw.split(",") if g.strip()])
 
     return User(name=user, email=email, groups=groups)
+
 
 
 def check_auth(url: str, request: Request, forward_headers: bool = False) -> User:

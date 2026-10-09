@@ -1,12 +1,14 @@
+import dataclasses
 
-from nicegui import ui
+from nicegui import ui, app
 from pathlib import Path
-from fastapi import Request
+from fastapi import Request, Response
 from insightshub.auth import User, sign_in_url, sign_out_url, authenticate, page_url
 from insightshub.config import settings
 from contextlib import asynccontextmanager
 import logging
 from urllib.parse import quote
+
 
 logger = logging.getLogger(__name__)
 
@@ -86,15 +88,16 @@ def _account(request: Request, user: User | None) -> None:
 
     with ui.row().classes("items-center gap-1"):
         # --- 1. MANAGEMENT ICONS (Placed first so they appear on the left) ---
-        if is_authenticated:
-            # Session Manager Icon
-            ui.button(icon='dns').props('color="secondary" size="lg"') \
-                .props('flat round dense') \
-                .classes('rounded-full hover:scale-110 transition') \
-                .style('border-radius: 50% !important; overflow: hidden;') \
-                .tooltip('Session Manager') \
-                .on('click', lambda: ui.navigate.to('/sessions'))
+        # Session Manager Icon
+        ui.button(icon='dns').props('color="secondary" size="lg"') \
+            .props('flat round dense') \
+            .classes('rounded-full hover:scale-110 transition') \
+            .style('border-radius: 50% !important; overflow: hidden;') \
+            .tooltip('Session Manager') \
+            .on('click', lambda: ui.navigate.to('/sessions'))
 
+
+        if is_authenticated:
             # System Settings Icon
             ui.button(icon='tune').props('color="secondary" size="lg"') \
                 .props('flat round dense') \
@@ -112,7 +115,7 @@ def _account(request: Request, user: User | None) -> None:
                 .props(f'flat round dense color="{"blue" if is_authenticated else "secondary"}" size="lg"') \
                 .classes(' rounded-full hover:scale-110 transition') \
                 .style('border-radius: 50% !important; overflow: hidden;') \
-                .tooltip(f'Connected as {user.email}' if is_authenticated else 'Sign In')
+                .tooltip(f'Connected as {user.email}' if is_authenticated else f'Sign In {user.name} with email: {user.email}')
 
             async def go_auth():
                 identity_btn.props('loading icon=sync')
@@ -268,10 +271,15 @@ def page_title(title: str) -> None:
         ui.label(title).classes("undp-title")
 
 @asynccontextmanager
-async def standard_page(title: str=None, request:Request = None):
+async def standard_page(title: str=None, request:Request = None, response:Response = None):
     """A reusable layout with a header, main content area, and footer."""
-    # Instantaneously grab the user from the proxy headers
-    user = await authenticate(url=settings.private_auth_url,request=request,forward_headers=True)
+    if not 'user' in app.storage.browser:
+        # Instantaneously grab the user from the proxy headers
+        user = await authenticate(url=settings.private_auth_url,request=request, forward_headers=True)
+        app.storage.browser['user'] = dataclasses.asdict(user)
+    else:
+        user = User(**app.storage.browser['user'])
+
     load_theme()
     _header(request=request, user=user)
     with ui.column().classes("undp-container undp-main"):
