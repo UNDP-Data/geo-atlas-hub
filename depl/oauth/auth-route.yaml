@@ -7,7 +7,6 @@ spec:
   parentRefs:
     - name: ${GATEWAY_NAME}
       namespace: ${GATEWAY_NAMESPACE}
-      sectionName: https-wildcard
   hostnames:
     - "${AUTH_SUBDOMAIN}.${BASE_DOMAIN}"
   rules:
