@@ -4,44 +4,91 @@ from fastapi import Request
 from dataclasses import dataclass
 from urllib.parse import urlencode
 from insightshub.config import settings
-
+import random
 
 logger = logging.getLogger(__name__)
 
+
 @dataclass(frozen=True)
 class User:
+    """Represents an application user."""
     name: str = 'Guest'
     email: str = ''
     groups: tuple[str, ...] = ()
 
+    def __post_init__(self):
+        if not self.email:
+            # Use object.__setattr__ to bypass frozen=True restrictions during initialization
+            random_suffix = random.randint(0, 10000)
+            object.__setattr__(self, 'email', f"{self.name.lower()}{random_suffix}@ran.dom")
+
     @property
     def display_name(self) -> str:
+        """Returns the user's name if available, otherwise defaults to email."""
         return self.name or self.email
 
     @property
     def is_authenticated(self) -> bool:
+        """Checks if the user is authenticated (not a default Guest)."""
         return self.name != 'Guest' and self.email != ''
 
 
+
 def page_url(request: Request) -> str:
-    """Absolute URL of the current page as the browser sees it."""
+    """
+    Constructs the absolute URL of the current page as seen by the browser.
+
+    Args:
+        request (Request): The incoming FastAPI request.
+
+    Returns:
+        str: The full absolute URL including scheme, host, path, and query parameters.
+    """
     path = request.url.path
     if request.url.query:
         path += f"?{request.url.query}"
-    # if settings.public_url:
-    #     return settings.public_url + path
+
     scheme = request.headers.get("x-forwarded-proto", request.url.scheme)
     host = request.headers.get("x-forwarded-host", request.headers.get("host", ""))
     return f"{scheme}://{host}{path}"
 
+
 def sign_in_url(request: Request) -> str:
+    """
+    Generates the sign-in URL, appending a redirect back to the current page.
+
+    Args:
+        request (Request): The incoming FastAPI request.
+
+    Returns:
+        str: The authentication start URL with a redirect parameter.
+    """
     return f"{settings.public_auth_url}/start?{urlencode({'rd': page_url(request)})}"
 
+
 def sign_out_url(request: Request) -> str:
+    """
+    Generates the sign-out URL, appending a redirect back to the current page.
+
+    Args:
+        request (Request): The incoming FastAPI request.
+
+    Returns:
+        str: The authentication sign-out URL with a redirect parameter.
+    """
     return f"{settings.public_auth_url}/sign_out?{urlencode({'rd': page_url(request)})}"
 
 
 def user_from_headers(request: Request) -> User:
+    """
+    Extracts user information from request headers to create a User instance.
+
+    Args:
+        request (Request): The incoming FastAPI request.
+
+    Returns:
+        User: An instance of the User object or Guest user if headers are missing.
+    """
     h = request.headers
     email = h.get("x-auth-request-email") or h.get("x-forwarded-email") or User.email
     user = h.get("x-auth-request-user") or h.get("x-forwarded-user") or User.name
@@ -51,7 +98,20 @@ def user_from_headers(request: Request) -> User:
     return User(name=user, email=email, groups=groups)
 
 
-def check_auth(url: str, request: Request, forward_headers=False):
+
+def check_auth(url: str, request: Request, forward_headers: bool = False) -> User:
+    """
+    Synchronously verifies authentication by validating cookies against an auth service.
+
+    Args:
+        url (str): The URL of the authentication validation service.
+        request (Request): The incoming FastAPI request.
+        forward_headers (bool, optional): If True, injects auth headers back into
+                                          the request scope. Defaults to False.
+
+    Returns:
+        User: An authenticated User instance if successful, otherwise a default Guest user.
+    """
     with httpx.Client(timeout=3.0) as client:
         try:
             headers = {
@@ -63,7 +123,6 @@ def check_auth(url: str, request: Request, forward_headers=False):
             if ua:
                 headers["User-Agent"] = ua
 
-            # Ask the proxy to validate the browser's cookies
             response = client.get(url, cookies=request.cookies, headers=headers)
 
             if response.status_code in (200, 202):
@@ -94,15 +153,24 @@ def check_auth(url: str, request: Request, forward_headers=False):
 
     return User()
 
-async def authenticate(url: str, request: Request, forward_headers=False)-> User:
 
+async def authenticate(url: str, request: Request, forward_headers: bool = False) -> User:
+    """
+    Asynchronously verifies authentication by checking headers first, then querying an auth service.
+
+    Args:
+        url (str): The URL of the authentication validation service.
+        request (Request): The incoming FastAPI request.
+        forward_headers (bool, optional): If True, injects auth headers back into
+                                          the request scope upon successful validation.
+                                          Defaults to False.
+
+    Returns:
+        User: An authenticated User instance if successful, otherwise a default Guest user.
+    """
     user = user_from_headers(request=request)
     if user.is_authenticated:
         return user
-
-    # DEBUG 1: Verify the URL and the cookies received from the browser
-    logger.info(f"DEBUG 0 - Target URL: {url}")
-    logger.info(f"DEBUG 1 - Cookies: {request.cookies}")
 
     async with httpx.AsyncClient(timeout=3.0) as client:
         try:
@@ -115,11 +183,7 @@ async def authenticate(url: str, request: Request, forward_headers=False)-> User
             if ua:
                 headers["User-Agent"] = ua
 
-            # Ask the proxy to validate the browser's cookies
             response = await client.get(url, cookies=request.cookies, headers=headers)
-            # DEBUG 2: Verify the proxy's response
-            logger.info(f"DEBUG 2 - Proxy Status Code: {response.status_code}")
-            logger.info(f"DEBUG 3 - Proxy Headers: {response.headers}")
 
             if response.status_code in (200, 202):
                 email = response.headers.get("x-auth-request-email", "")
@@ -148,5 +212,3 @@ async def authenticate(url: str, request: Request, forward_headers=False)-> User
             logger.error(f"Auth Service unreachable: {e}")
 
     return User()
-
-

@@ -15,6 +15,8 @@ class Settings(BaseSettings):
     # redirects, e.g. https://auth.undpgeohub.org/oauth2
     public_auth_url: str
     private_auth_url: str
+    nb_github_token:str
+    nb_github_repo:str
     # Public origin of this app, e.g. https://careatlas.undpgeohub.org.
     # When empty it is derived from the request (forwarded headers first).
 
