@@ -8,3 +8,6 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # Create cluster using the config relative to the script directory
 kind create cluster --name $CLUSTER_NAME --config "$SCRIPT_DIR/dev-cluster.yaml"
+
+# create marimo ns and rbac
+kubectl apply -f marimo-setup.yaml

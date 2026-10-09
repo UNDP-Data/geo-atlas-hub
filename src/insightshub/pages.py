@@ -8,7 +8,7 @@ from pathlib import Path
 from insightshub.config import settings
 from insightshub.layout import standard_page, UNDP_RED
 from insightshub import marutil as mu
-
+from insightshub.kubespawner import handle_session_launch
 BASE_DIR = Path(__file__).parent.parent.parent.resolve()
 NOTEBOOKS_DIR = (BASE_DIR / "notebooks").resolve()
 os.environ['NOTEBOOKS_DIR'] = str(NOTEBOOKS_DIR)
@@ -19,7 +19,7 @@ os.environ['NOTEBOOKS_DIR'] = str(NOTEBOOKS_DIR)
 async def home(request: Request, subpath: str = "") -> None:
 
     async with (standard_page(title="Apps", request=request) as user):
-        repo_url = f'https://oauth2:{settings.github_token}@github.com/UNDP-data/geo-careatlas-notebooks.git'
+        repo_url = f'https://oauth2:{settings.nb_github_token}@github.com/{settings.nb_github_repo}'
         # Identify if user has Edit rights (authenticated users)
         can_edit = user.is_authenticated
         # Clone the repository
@@ -122,10 +122,15 @@ async def home(request: Request, subpath: str = "") -> None:
                                 if can_edit:
                                     # 2 buttons, equal widths
                                     ui.button(
-                                        'Launch',
-                                        on_click=lambda s=marimo_slug, : ui.navigate.to(next_uri)
+                                        text='Launch',
+                                        on_click=lambda e, p=str(rel_path): handle_session_launch(
+                                            notebook_path=p,
+                                            mode="run",
+                                            user_email=""  # Empty for run mode; use user.email for the Edit button
+                                        )
                                     ).classes('undp-btn--small primary text-white flex-1 w-1/2 capitalize') \
-                                        .tooltip(f'View as interactive app at {next_uri}')
+                                        .tooltip(f'View as interactive app')
+                                        #.tooltip(f'View as interactive app at {next_uri}')
 
                                     ui.button(
                                         'Edit',
@@ -139,10 +144,14 @@ async def home(request: Request, subpath: str = "") -> None:
 
                                     # 1 button, centered in the same max width wrapper
                                     ui.button(
-                                        'Launch',
-                                        on_click=lambda: ui.navigate.to(next_uri)
-                                    ).classes('undp-btn primary text-white justify w-[180px] capitalize') \
-                                        .tooltip(f'View as interactive app at {next_uri}')
+                                        text='Launch',
+                                        on_click=lambda e, p=str(rel_path): handle_session_launch(
+                                            notebook_path=p,
+                                            mode="run",
+                                            user_email=""  # Empty for run mode; use user.email for the Edit button
+                                        )
+                                    ).classes('undp-btn--small primary text-white flex-1 w-1/2 capitalize') \
+                                        .tooltip(f'View as interactive app')
             # # 4. The Grid
             # with ui.grid(columns='1fr 1fr 1fr').classes('w-full gap-8'):
             #     # Filter: No hidden files, no __init__.py
