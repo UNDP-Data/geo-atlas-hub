@@ -19,8 +19,8 @@ fi
 
 # Resource Names & Target Namespace
 
-CERT_NAME="wildcard-${BASE_DOMAIN//./-}-cert"
-CERT_SECRET_NAME="wildcard-${BASE_DOMAIN//./-}-tls"
+export CERT_NAME="wildcard-${BASE_DOMAIN//./-}-cert"
+export CERT_SECRET_NAME="wildcard-${BASE_DOMAIN//./-}-tls"
 
 echo "==> [cert] Removing Certificate resources..."
 if [ -f "${SCRIPT_DIR}/cluster-wide-cert.yaml" ]; then

@@ -41,6 +41,7 @@ def spawn_marimo_session(
         marimo.io/hostname: "{session_hostname}"
     spec:
       activeDeadlineSeconds: 86400
+      ttlSecondsAfterFinished: 3600
       template:
         metadata:
           labels:
