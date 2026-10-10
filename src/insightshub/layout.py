@@ -1,3 +1,4 @@
+import asyncio
 import dataclasses
 
 from nicegui import ui, app
@@ -118,10 +119,13 @@ def _account(request: Request, user: User | None) -> None:
                 .tooltip(f'Connected as {user.email}' if is_authenticated else f'Sign In {user.name} with email: {user.email}')
 
             async def go_auth():
+                logger.info(f'Going to auth {final_url}')
                 identity_btn.props('loading icon=sync')
                 identity_btn.classes(add='animate-spin')
-                await ui.run_javascript('await new Promise(r => requestAnimationFrame(r))')
-                ui.navigate.to(final_url)
+                await asyncio.sleep(.1)
+                safe_rd = quote(rd, safe='')
+                ui.navigate.to(f"/_auth/bounce?action={action}&rd={safe_rd}")
+                #ui.navigate.to(final_url)
 
             identity_btn.on('click', go_auth)
 

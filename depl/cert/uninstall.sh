@@ -10,6 +10,18 @@ if [ -f "${SCRIPT_DIR}/.env" ]; then
   set +a
 fi
 
+# ACME Server endpoint
+if [ "${LE_ENV}" = "prod" ]; then
+  ACME_SERVER="https://acme-v02.api.letsencrypt.org/directory"
+else
+  ACME_SERVER="https://acme-staging-v02.api.letsencrypt.org/directory"
+fi
+
+# Resource Names & Target Namespace
+
+export CERT_NAME="wildcard-${BASE_DOMAIN//./-}-cert"
+export CERT_SECRET_NAME="wildcard-${BASE_DOMAIN//./-}-tls"
+
 echo "==> [cert] Removing Certificate resources..."
 if [ -f "${SCRIPT_DIR}/cluster-wide-cert.yaml" ]; then
   envsubst < "${SCRIPT_DIR}/cluster-wide-cert.yaml" | kubectl delete -f - --ignore-not-found=true

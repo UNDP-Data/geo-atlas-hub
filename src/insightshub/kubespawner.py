@@ -11,33 +11,43 @@ from insightshub.config import settings
 
 logger = logging.getLogger(__name__)
 
-
-def spawn_marimo_session(notebook_path: str, mode: str = "run", namespace: str = "marimo", user_email: str = None,
-                         hostname:str=None):
-    repo_url = f'https://oauth2:{settings.nb_github_token}@github.com/{settings.nb_github_repo}'
-
+def spawn_marimo_session(
+    notebook_path: str,
+    mode: str = "run",
+    namespace: str = "marimo",
+    user_email: str = None,
+    hostname: str = None,
+):
+    repo_url = f"https://oauth2:{settings.nb_github_token}@github.com/{settings.nb_github_repo}"
 
     config.load_incluster_config()
     k8s_client = client.ApiClient()
+    batch_v1 = client.BatchV1Api(k8s_client)
+    core_v1 = client.CoreV1Api(k8s_client)
+    custom_api = client.CustomObjectsApi(k8s_client)
 
     session_id = uuid.uuid4().hex[:8]
     resource_name = f"marimo-{mode}-{session_id}"
-    session_hostname = f"{session_id}.{hostname}"  # The new dynamic subdomain
-    sanitized_email = user_email.replace('@', '-').replace('.', '-')
+    session_hostname = f"{session_id}.{hostname}"
+    sanitized_email = user_email.replace("@", "-").replace(".", "-")
+
     yaml_template = textwrap.dedent(f"""\
-    ---
     apiVersion: batch/v1
     kind: Job
     metadata:
       name: placeholder-name
+      annotations:
+        marimo.io/notebook-path: "{notebook_path}"
+        marimo.io/hostname: "{session_hostname}"
     spec:
-      ttlSecondsAfterFinished: 120
+      activeDeadlineSeconds: 86400
+      ttlSecondsAfterFinished: 3600
       template:
         metadata:
           labels:
             app: marimo-worker
             session: placeholder-session
-            owner: {sanitized_email}
+            owner: "{sanitized_email}"
         spec:
           restartPolicy: Never
           volumes:
@@ -47,10 +57,7 @@ def spawn_marimo_session(notebook_path: str, mode: str = "run", namespace: str =
           - name: fetch-notebooks
             image: alpine/git:latest
             command: ["/bin/sh", "-c"]
-            # 1. Clone repo metadata only (--no-checkout --depth 1)
-            # 2. Tell Git to only track the specific notebook_path
-            # 3. Checkout that single file
-            args: 
+            args:
             - |
               rm -rf /workspace/* && \
               git clone --no-checkout --depth 1 {repo_url} /workspace && \
@@ -63,18 +70,16 @@ def spawn_marimo_session(notebook_path: str, mode: str = "run", namespace: str =
           containers:
           - name: marimo
             image: insights-hub:latest
-            imagePullPolicy: IfNotPresent 
-            command: []
+            imagePullPolicy: IfNotPresent
             ports:
             - containerPort: 8080
-            # Main resources for running/editing the notebook
             resources:
               requests:
                 memory: "2Gi"
-                cpu: "2000m"     # 2 CPU cores
+                cpu: "2000m"
               limits:
-                memory: "8Gi"   # Adjust this based on your dataset sizes
-                cpu: "4000m"    # 4 full CPU cores
+                memory: "8Gi"
+                cpu: "4000m"
             volumeMounts:
             - name: session-workspace
               mountPath: /workspace
@@ -84,7 +89,7 @@ def spawn_marimo_session(notebook_path: str, mode: str = "run", namespace: str =
     metadata:
       name: placeholder-name
       labels:
-        owner: {sanitized_email}
+        owner: "{sanitized_email}"
     spec:
       selector:
         session: placeholder-session
@@ -96,8 +101,8 @@ def spawn_marimo_session(notebook_path: str, mode: str = "run", namespace: str =
     kind: HTTPRoute
     metadata:
       name: placeholder-name
-      labels: 
-        pwner: {sanitized_email}
+      labels:
+        owner: "{sanitized_email}"
     spec:
       parentRefs:
       - name: cluster-gateway
@@ -114,58 +119,69 @@ def spawn_marimo_session(notebook_path: str, mode: str = "run", namespace: str =
           port: 80
     """)
 
-    manifests = list(yaml.safe_load_all(yaml_template))
-    job_dict, svc_dict, route_dict = manifests
+    job_dict, svc_dict, route_dict = list(yaml.safe_load_all(yaml_template))
 
-    # 1. Mutate the Job
-    job_dict['metadata']['name'] = resource_name
-    job_dict['spec']['template']['metadata']['labels']['session'] = session_id
+    # 1. Configure Job
+    job_dict["metadata"]["name"] = resource_name
+    job_dict["spec"]["template"]["metadata"]["labels"]["session"] = session_id
 
-    # Notice we removed the --base-url flag entirely because it now lives at the root (/)
     if mode == "edit":
-        job_dict['spec']['template']['spec']['containers'][0]['command'] = [
+        job_dict["spec"]["template"]["spec"]["containers"][0]["command"] = [
             "marimo", "edit", f"/workspace/{notebook_path}",
             "--host", "0.0.0.0", "--port", "8080", "--headless", "--no-token"
         ]
         if user_email:
-            job_dict['spec']['template']['spec']['containers'][0]['env'] = [
+            job_dict["spec"]["template"]["spec"]["containers"][0]["env"] = [
                 {"name": "GIT_AUTHOR_EMAIL", "value": user_email},
-                {"name": "GIT_AUTHOR_NAME", "value": user_email.split('@')[0]}
+                {"name": "GIT_AUTHOR_NAME", "value": user_email.split("@")[0]}
             ]
     else:
-        job_dict['spec']['template']['spec']['containers'][0]['command'] = [
+        job_dict["spec"]["template"]["spec"]["containers"][0]["command"] = [
             "marimo", "run", f"/workspace/{notebook_path}",
             "--host", "0.0.0.0", "--port", "8080"
         ]
 
-    # 2. Mutate the Service
-    svc_dict['metadata']['name'] = resource_name
-    svc_dict['spec']['selector']['session'] = session_id
+    # Submit Job first to acquire the cluster-generated UID
+    created_job = batch_v1.create_namespaced_job(namespace=namespace, body=job_dict)
+    job_uid = created_job.metadata.uid
 
-    # 3. Mutate the HTTPRoute (Inject the dynamic subdomain)
-    route_dict['metadata']['name'] = resource_name
-    route_dict['spec']['hostnames'][0] = session_hostname
-    route_dict['spec']['rules'][0]['backendRefs'][0]['name'] = resource_name
+    # 2. Build ownerReference pointing to the created Job
+    owner_reference = [
+        {
+            "apiVersion": "batch/v1",
+            "kind": "Job",
+            "name": resource_name,
+            "uid": job_uid,
+            "blockOwnerDeletion": True,
+            "controller": True,
+        }
+    ]
 
-    # 4. Apply all resources
-    custom_api = client.CustomObjectsApi(k8s_client)
-    for manifest in manifests:
-        if manifest['kind'] == 'HTTPRoute':
-            custom_api.create_namespaced_custom_object(
-                group="gateway.networking.k8s.io",
-                version="v1",
-                namespace=namespace,
-                plural="httproutes",
-                body=manifest
-            )
-        else:
-            utils.create_from_dict(k8s_client, manifest, namespace=namespace)
+    # 3. Configure and create Service
+    svc_dict["metadata"]["name"] = resource_name
+    svc_dict["metadata"]["ownerReferences"] = owner_reference
+    svc_dict["spec"]["selector"]["session"] = session_id
+
+    core_v1.create_namespaced_service(namespace=namespace, body=svc_dict)
+
+    # 4. Configure and create HTTPRoute
+    route_dict["metadata"]["name"] = resource_name
+    route_dict["metadata"]["ownerReferences"] = owner_reference
+    route_dict["spec"]["hostnames"][0] = session_hostname
+    route_dict["spec"]["rules"][0]["backendRefs"][0]["name"] = resource_name
+
+    custom_api.create_namespaced_custom_object(
+        group="gateway.networking.k8s.io",
+        version="v1",
+        namespace=namespace,
+        plural="httproutes",
+        body=route_dict,
+    )
 
     final_url = f"https://{session_hostname}"
-    logger.info(f"Provisioned resources for {resource_name} at {final_url}")
+    logger.info(f"Provisioned resources for {resource_name} at {final_url} (Job UID: {job_uid})")
 
     return session_id, final_url
-
 
 def get_pod_status(session_id: str, namespace: str = "marimo") -> str:
     """Queries K8s for the pod matching the session_id and returns a human-readable status."""
