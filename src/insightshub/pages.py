@@ -11,6 +11,10 @@ from insightshub import marutil as mu
 from insightshub.kubespawner import handle_session_launch
 from insightshub.kube_session_manager import manager
 import asyncio
+from fastapi.responses import RedirectResponse
+from urllib.parse import quote
+from nicegui import app, ui
+from insightshub.config import settings
 
 
 
@@ -143,10 +147,15 @@ async def home(request: Request, response:Response,  subpath: str = "") -> None:
                                     ui.button(
                                         'Edit',
                                         color="secondary",
-                                        on_click=lambda s=marimo_slug,: ui.navigate.to(f'/edit/open/{s}')
+                                        on_click=lambda e, p=str(rel_path): handle_session_launch(
+                                            notebook_path=p,
+                                            mode="edit",
+                                            user_email=user.email,
+                                            hostname=hostname
+                                        )
                                     ).classes('undp-btn--small secondary text-white flex-1 w-1/2 capitalize') \
                                         .tooltip(
-                                        f'Open in Editor mode (Spawns kernel) to /edit/open/{marimo_slug}')
+                                        f'Edit notebook...')
 
                                 else:
 
@@ -265,7 +274,7 @@ async def app_settings(request: Request, response: Response) -> None:
 
 
 @ui.page("/sessions")
-async def app_settings(request: Request, response: Response) -> None:
+async def session_manager(request: Request, response: Response) -> None:
 
     async with standard_page(title="Session manager", request=request, response=response) as user:
         with ui.column().classes('w-full max-w-7xl mx-auto px-6 lg:px-8 gap-6 pb-12'):
@@ -363,3 +372,19 @@ async def app_settings(request: Request, response: Response) -> None:
 
             # Initial render
             refresh_list()
+
+
+
+
+@ui.page('/_auth/bounce')
+def auth_bounce(action: str, rd: str):
+    """Silently clears the cookie and redirects in a single network hop."""
+    # 1. Clear the local identity safely via HTTP
+    app.storage.browser.pop('user', None)
+
+    # 2. Construct the auth proxy URL
+    target_host = settings.public_auth_url
+    final_url = f"{target_host}/{action}?rd={quote(rd, safe=':/%?=&')}"
+
+    # 3. Instantly redirect the browser (No UI is rendered)
+    return RedirectResponse(final_url)
