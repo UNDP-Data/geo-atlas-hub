@@ -40,7 +40,7 @@ def spawn_marimo_session(
         marimo.io/notebook-path: "{notebook_path}"
         marimo.io/hostname: "{session_hostname}"
     spec:
-      ttlSecondsAfterFinished: 120
+      activeDeadlineSeconds: 86400
       template:
         metadata:
           labels:
