@@ -9,6 +9,11 @@ from insightshub.config import settings
 from insightshub.layout import standard_page
 from insightshub import marutil as mu
 from insightshub.kubespawner import handle_session_launch
+from insightshub.kube_session_manager import manager
+import asyncio
+
+
+
 BASE_DIR = Path(__file__).parent.parent.parent.resolve()
 NOTEBOOKS_DIR = (BASE_DIR / "notebooks").resolve()
 os.environ['NOTEBOOKS_DIR'] = str(NOTEBOOKS_DIR)
@@ -257,3 +262,104 @@ async def app_settings(request: Request, response: Response) -> None:
         hostname = '.'.join(request.headers.get('host').split('.')[-2:])
 
         ui.label(f'{hostname}')
+
+
+@ui.page("/sessions")
+async def app_settings(request: Request, response: Response) -> None:
+
+    async with standard_page(title="Session manager", request=request, response=response) as user:
+        with ui.column().classes('w-full max-w-7xl mx-auto px-6 lg:px-8 gap-6 pb-12'):
+
+            # Header Row
+            with ui.row().classes(
+                    'w-full justify-between items-center p-4 mb-4 bg-gray-50 border border-gray-200 shadow-sm rounded-lg'):
+                with ui.column().classes('gap-0'):
+                    ui.label('Active Marimo Sessions').classes('text-xl font-bold text-gray-800')
+                    ui.label(f'Owner: {user.email}').classes('text-xs text-gray-500 font-mono')
+
+                with ui.row().classes('items-center gap-2'):
+                    ui.button(icon='refresh', on_click=lambda: refresh_list()) \
+                        .props('flat round color=primary') \
+                        .tooltip('Refresh Status')
+
+                    ui.button(icon='delete_forever', on_click=lambda: kill_all_sessions()) \
+                        .props('flat round color=negative') \
+                        .tooltip('Delete All Sessions')
+
+            # Session list container
+            list_container = ui.column().classes('w-full gap-4')
+
+            async def kill_session(session_id: str):
+                await manager.delete_session(session_id)
+                ui.notify(f"Terminating cluster session {session_id}...", type='info')
+                await asyncio.sleep(0.5)
+                refresh_list()
+
+            async def kill_all_sessions():
+                user_sessions = manager.get_user_sessions(user.email)
+                for s in user_sessions:
+                    await manager.delete_session(s.session_id)
+                ui.notify("Terminated all user workloads.", type='warning')
+                await asyncio.sleep(0.5)
+                refresh_list()
+
+            def refresh_list():
+                list_container.clear()
+                user_sessions = manager.get_user_sessions(user.email)
+
+                if not user_sessions:
+                    with list_container:
+                        ui.label("No active notebook sessions found for this user.").classes(
+                            'text-gray-400 italic mt-4')
+                    return
+
+                with list_container:
+                    for s in user_sessions:
+                        # Status Indicator Color
+                        if s.status == "Running":
+                            status_color = 'bg-emerald-500'
+                        elif s.status == "Pending":
+                            status_color = 'bg-amber-500'
+                        else:
+                            status_color = 'bg-red-500'
+
+                        with ui.card().classes(
+                                'w-full p-0 flex flex-row items-center justify-between overflow-hidden bg-white shadow-sm border border-gray-100 rounded-lg'):
+
+                            # Left: Status indicator & details
+                            with ui.row().classes('items-center gap-0 w-2/3'):
+                                ui.element('div').classes(f'w-2 h-20 {status_color}')
+
+                                with ui.row().classes('items-center gap-4 pl-4 py-2'):
+                                    ui.icon('cloud', color='primary').classes('text-2xl opacity-80')
+
+                                    with ui.column().classes('gap-0'):
+                                        ui.label(s.notebook_path).classes('font-bold text-base text-gray-800')
+
+                                        with ui.row().classes('gap-3 items-center mt-1'):
+                                            ui.label(f"ID: {s.session_id}").classes(
+                                                'text-xs text-gray-500 font-mono bg-gray-100 px-2 py-0.5 rounded')
+                                            ui.label(f"Status: {s.status}").classes(
+                                                f'text-xs font-bold {"text-emerald-600" if s.status == "Running" else "text-amber-600"}')
+                                            if s.created_at:
+                                                ui.label(s.created_at.strftime("%H:%M:%S")).classes(
+                                                    'text-xs text-gray-400')
+
+                            # Right: Actions
+                            with ui.row().classes('items-center gap-2 pr-6'):
+                                # Join Button (Enabled only if Running)
+                                join_btn = ui.button('Join', icon='open_in_new',
+                                                     on_click=lambda url=s.url: ui.navigate.to(url, new_tab=True)) \
+                                    .props('flat color=primary').classes('font-bold tracking-wider')
+
+                                if s.status != "Running":
+                                    join_btn.props('disable')
+                                    join_btn.tooltip('Session is provisioning...')
+
+                                # Kill Button
+                                ui.button(icon='delete_outline', on_click=lambda sid=s.session_id: kill_session(sid)) \
+                                    .props('flat round color=negative') \
+                                    .tooltip('Delete Kubernetes Session')
+
+            # Initial render
+            refresh_list()
